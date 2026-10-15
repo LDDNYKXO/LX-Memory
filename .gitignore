@@ -1,0 +1,24 @@
+runtime/
+vendor/
+dist/
+client-config.json
+__pycache__/
+*.py[cod]
+*.log
+.env
+.env.*
+
+*.zip
+*.7z
+*.har
+*.sqlite*
+*.db
+*.pfx
+*.key
+.lingxi-memory-connector/
+**/Cookies
+**/Login Data
+**/remember.json
+**/connection.json
+**/*.receipt.json
+**/*.proposal.json

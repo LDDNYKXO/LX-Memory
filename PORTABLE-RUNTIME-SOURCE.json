@@ -1,0 +1,7 @@
+{
+  "python_version": "3.13.16",
+  "source_url": "https://www.python.org/ftp/python/3.13.16/python-3.13.16-embeddable-amd64.zip",
+  "sha256": "589dc1e9d02549ca5f680710307ff9b77f6e3ffc4aa3efccd7fa54eeeafac94b",
+  "official_manifest": "https://www.python.org/ftp/python/3.13.16/windows-3.13.16.json",
+  "official_hash_match": true
+}
