@@ -1,4 +1,4 @@
-# 灵犀记忆 MCP
+# LX Memory
 
 让支持本地 stdio MCP 的 Agent 共用当前用户授权的灵犀云端记忆。默认提供通用 MCP 接口，不要求安装任何指定品牌的 Agent。当前运行环境为 Windows 10/11 x64 和 Microsoft Edge。
 
