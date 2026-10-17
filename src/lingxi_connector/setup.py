@@ -12,7 +12,7 @@ import tomllib
 from .broker import private_directory
 
 CLIENTS=('Codex','DSH','WorkBuddy','ZCode')
-KNOWN_SKILLS={'4391b6ad3816807e82f09e4e56268b8bbff55678faf6d04c91da3fadb1247e67','ebedec54920ea4856ee37e83b16709eade1af4f053f78c9d0b83e9061aaf51a3'}
+KNOWN_SKILLS={'b903dc8532b05ef97b888c65b2631435ee7b87ee691627a47202f8aad08ac925','c0570626a199bdcf8119f7bba6eea50f70503ccd13d514d709b8416336b2e955','3810ae4ae29583288e675e9cb653934b2260f5e0e3a62f241b8c9c7a449a3092','357012fa17537e78076ad72008e80036fae19bda315d8a6fb317a4b906402d2f','3810ae4ae29583288e675e9cb653934b2260f5e0e3a62f241b8c9c7a449a3092','4391b6ad3816807e82f09e4e56268b8bbff55678faf6d04c91da3fadb1247e67','ebedec54920ea4856ee37e83b16709eade1af4f053f78c9d0b83e9061aaf51a3','7cd301a94b16b80427123a4027a856e6db0a6a78a02e55dcd43a0f01750f4053','b2a6a08685cb69bead347efb92a4eab3fd1889e43f4073902089aac3f388745e','5a17c7bcb8f051b4e985961cd7101bd1ed0c19df7f67ad377044510e9241ff65','0dd41e9b5d88949bc9cdc53167158df93716effdd8b871d43c76bf422e3eb671'}
 class InstallerError(Exception):pass
 def sha(value):return hashlib.sha256(value).hexdigest()
 def unique_object(pairs):
@@ -144,7 +144,7 @@ def safe_target(path,home):
         if candidate.is_symlink() or (hasattr(candidate,'is_junction') and candidate.is_junction()):raise InstallerError('配置路径是链接，未修改')
         if candidate==home:break
 
-def configure(root,home,python,clients,apply=False):
+def configure(root,home,python,clients,apply=False,replace_skill=False):
     root=Path(root).resolve();home=Path(home).resolve();python=Path(python).resolve()
     if not clients or len(set(clients))!=len(clients) or any(c not in CLIENTS for c in clients):raise InstallerError('请选择有效助手')
     desired=definition(root,python);owned_args=[desired['args']]
@@ -160,7 +160,13 @@ def configure(root,home,python,clients,apply=False):
             if prior_root not in owned_roots:owned_roots.append(prior_root)
             owned_args.append(['-B',str(Path(prior_root)/'run.py'),'mcp'])
     paths={'Codex':home/'.codex/config.toml','DSH':home/'.dsh/profiles/desktop/cordis.patch.yml','WorkBuddy':home/'.workbuddy/mcp.json','ZCode':home/'.zcode/cli/config.json'}
-    mutations=[];report={'applied':apply,'clients':[],'desktop_native_verified':False}
+    mutations=[];report={'applied':apply,'clients':[],'desktop_native_verified':False,'skill_unknown_modification':False,'skill_backup':None}
+    from .integration import verify_ownership
+    report['ownership'] = verify_ownership({client: paths[client] for client in clients}, owned_roots)
+    rules_available = (root / 'integrations/resume-rules.md').is_file()
+    if rules_available:
+        from .integration import configure_rules
+        report['rules'] = configure_rules(root, home, clients, apply=False)
     try:
         for client in clients:
             target=paths[client];safe_target(target,home)
@@ -171,13 +177,20 @@ def configure(root,home,python,clients,apply=False):
             mutations.append((target,raw,updated))
             report['clients'].append({'client':client,'config_path':str(target),'configured':apply,'changed':raw!=updated,'refresh_required':True})
         skill=(root/'skills/lingxi-cloud-memory/SKILL.md').read_bytes()
-        skill_roots=[]
+        skill_targets=[];skill_roots=[]
         if any(c in clients for c in ('Codex','DSH','ZCode')):skill_roots.append(home/'.agents/skills')
         if 'WorkBuddy' in clients:skill_roots.append(home/'.workbuddy/skills')
         for skill_root in skill_roots:
             target=skill_root/'lingxi-cloud-memory/SKILL.md';safe_target(target,home)
             raw=target.read_bytes() if target.exists() else None
-            if raw is not None and raw!=skill and sha(raw) not in KNOWN_SKILLS:raise InstallerError('技能有用户修改，保留原文件')
+            unknown=raw is not None and raw!=skill and sha(raw) not in KNOWN_SKILLS
+            if unknown:
+                # Unknown content is never overwritten silently; the failure carries a stable
+                # code so the agent installer can report it instead of exiting with a traceback.
+                if not replace_skill:
+                    raise InstallerError('SKILL_UNKNOWN_MODIFICATION: 目标技能含未知修改，未覆盖；如需备份后替换为产品版本，请显式使用 --replace-skill。')
+                report['skill_unknown_modification']=True
+            skill_targets.append(target)
             mutations.append((target,raw,skill))
         raw=registry.read_bytes() if registry.exists() else None
         value={'product':'lingxi-memory-connector','root':str(root),'roots':owned_roots,'python':str(python)}
@@ -233,4 +246,10 @@ def configure(root,home,python,clients,apply=False):
             entry['state']='verified';done.append({k:v for k,v in entry.items() if k!='state'});save_journal()
         save_journal(True)
     except OSError as error:raise InstallerError('安装写入中断；恢复记录和备份已保留，可重新核查后继续') from error
+    wanted={str(target) for target in skill_targets}
+    for entry in done:
+        if entry.get('path') in wanted and entry.get('backup_file'):
+            report['skill_backup']=entry['backup_file']
+    if rules_available:
+        report['rules'] = configure_rules(root, home, clients, apply=True)
     return report

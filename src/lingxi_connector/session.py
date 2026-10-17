@@ -8,6 +8,8 @@ from pathlib import Path
 from .cloud import ConnectorError, read_url, search_url, decode_response, read_result, search_result, IDENTITY_URL, identity_result, PREFIX
 
 class Session:
+    supports_validation = True
+
     def __init__(self, directory: Path):
         self.directory = directory.resolve()
         self.context = None

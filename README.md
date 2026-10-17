@@ -1,4 +1,4 @@
-# LX Memory
+# 灵犀记忆 MCP
 
 让支持本地 stdio MCP 的 Agent 共用当前用户授权的灵犀云端记忆。默认提供通用 MCP 接口，不要求安装任何指定品牌的 Agent。当前运行环境为 Windows 10/11 x64 和 Microsoft Edge。
 
@@ -23,7 +23,7 @@
 
 可以说“查询灵犀记忆，继续上次项目”，或“请记住：……”。先检查连接，再读取相关记忆。只有用户明确要求保存时才生成预览、按授权提交、读回验证；普通聊天不自动保存。首版只新增 wiki 条目，不覆盖既有页面或核心记忆。
 
-六个 MCP 工具为 `status`、`search`、`read`、`prepare`、`commit`、`receipt`。支持 Skill 的客户端可以另外安装配套 Skill；MCP 本身不依赖客户端具备 Skill 功能。灵犀桌面助手不必一直开着。
+八个 MCP 工具为 `status`、`search`、`read`、`prepare`、`commit`、`receipt`、`context`、`validate`。`context` 分层返回必需背景，并在可用时附带 profile/lessons 个人层；`validate` 在项目交接提交前模拟替代链，只有验证通过才应 commit。支持 Skill 的客户端可以另外安装配套 Skill；MCP 本身不依赖客户端具备 Skill 功能。灵犀桌面助手不必一直开着。
 
 同一 Windows 用户的多个 Agent 复用一份本产品登录。换电脑首次登录一次；登录失效时按正常流程重新登录。首次开启保存功能仍需本人主动选择安装向导中的验证步骤，本入口不自动写入测试记忆。
 
