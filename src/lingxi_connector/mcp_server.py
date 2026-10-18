@@ -47,13 +47,17 @@ def create_server(root):
         return await invoke('validate', args)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True))
-    async def lingxi_memory_prepare(category: str, title: str, summary: str, content: str, assessment_confirmation: str | None = None, target_path: str = '') -> dict:
-        """Prepare full exact preview and bounded project duplicate/change/conflict assessment; no cloud write. Show all gaps/conflicts. Only after human confirms those specific issues, re-prepare with assessment_review_key as assessment_confirmation. That acknowledges issues, never authorizes commit: show the new exact preview and obtain separate authorization. Never infer consent or claim full-library deduplication. Passing target_path makes the preview an exact whole-page replacement of that existing page and includes its previous body so the caller can confirm what will be overwritten."""
+    async def lingxi_memory_prepare(category: str, title: str, summary: str, content: str, assessment_confirmation: str | None = None, target_path: str = '', sources: list[str] | None = None, related: list[str] | None = None) -> dict:
+        """Prepare full exact preview and bounded project duplicate/change/conflict assessment; no cloud write. Show all gaps/conflicts. Only after human confirms those specific issues, re-prepare with assessment_review_key as assessment_confirmation. That acknowledges issues, never authorizes commit: show the new exact preview and obtain separate authorization. Never infer consent or claim full-library deduplication. Passing target_path makes the preview an exact whole-page replacement of that existing page and includes its previous body and front matter so the caller can confirm what will be overwritten; sources/related default to the previous page values and only change when explicitly passed."""
         args = {'category':category,'title':title,'summary':summary,'content':content}
         if assessment_confirmation is not None:
             args['assessment_confirmation'] = assessment_confirmation
         if target_path:
             args['target_path'] = target_path
+        if sources is not None:
+            args['sources'] = sources
+        if related is not None:
+            args['related'] = related
         return await invoke('prepare', args)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True))

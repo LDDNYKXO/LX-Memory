@@ -60,8 +60,8 @@ description: Use when a user says 继续这个项目, asks for project goals/cur
 
 ### 编辑与归档（可选能力）
 
-- **编辑既有页面**：`lingxi_memory_prepare(..., target_path='wiki/projects/...')` 生成整页替换预览（含旧正文与旧标题），确认后 `commit`；`core/` 与 `wiki/profile/` 不接受替换。
-- **删除/归档**：只能删除**已被另一条项目记录明确替代**、或自身声明 `record_kind=test/history` 的页面；普通页面返回 `TARGET_NOT_SUPERSEDED`。可直接用 `superseded_by` 指明替代页（连接器会读回该页 `supersedes` 校验），避免依赖搜索命中。删除不可恢复：预览必须展示正文，取得用户明确授权后才 `commit`，并读回确认 404；`core/` 与 `wiki/profile/` 始终拒绝。测试页应带 `record_kind=test` 标记，便于日后清理。
+- **编辑既有页面**：`lingxi_memory_prepare(..., target_path='wiki/projects/...')` 生成整页替换预览（含旧正文、旧标题、旧 `sources`/`related` 与新值），确认后 `commit`；默认保留原元数据，只有显式传入 `sources`/`related` 才改变；提交前正文或元数据任一变化都会拒绝覆盖（`TARGET_CHANGED` / `TARGET_METADATA_CHANGED`）。`core/` 与 `wiki/profile/` 不接受替换。
+- **删除/归档**：只能删除**结构校验通过、且已被另一条项目记录明确替代**、或自身是完整 `test`/`history` 记录的页面；普通页面返回 `TARGET_NOT_SUPERSEDED`。可用 `superseded_by` 指明替代页（连接器会完整读回并校验其 `supersedes`）。删除不可恢复：预览必须展示正文，取得用户明确授权后才 `commit`；提交前会重新读取目标与证据页，证据消失/被改/不可读（`EVIDENCE_MISSING` / `EVIDENCE_CHANGED` / `EVIDENCE_UNREADABLE`）则拒绝；`core/` 与 `wiki/profile/` 始终拒绝。测试页应带完整记录结构（含 `project`、空 `supersedes`、`record_kind=test`）。
 
 只有`state=saved_verified`才能说“已保存到灵犀”，必要时用`lingxi_memory_receipt`读回执。`unknown`只查回执，不新建提案重发；`blocked`、过期、账号变化或工具缺失如实说明，不能用本地候选或快照冒充云端保存。普通聊天和仅查背景时不调用prepare/commit。
 

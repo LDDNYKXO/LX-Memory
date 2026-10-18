@@ -2,9 +2,11 @@
 
 ## 未发布
 
-- 更新/编辑：`prepare(target_path=...)` 生成整页替换预览（同时展示旧标题与旧正文），通过 `PUT /pages/<path>` 提交；commit 前拒绝目标页面消失（`TARGET_MISSING`）、预览后被改动（`TARGET_CHANGED`）与读回失败（`TARGET_UNREADABLE`），避免覆盖他人编辑或丢失正文。
-- 删除/归档：新增 `lingxi_memory_archive`（`DELETE /pages/<path>`），只对“已被另一条项目记录的 `supersedes` 明确替代”或自身声明 `record_kind=test/history` 的页面生成删除预览；普通页面返回 `TARGET_NOT_SUPERSEDED`，`core/` 与 `wiki/profile/` 始终受保护。删除不可恢复，提交后读回确认 404，并以 `evidence` 字段说明可删依据；可用 `superseded_by` 显式指定替代页，避免依赖搜索命中。
-- MCP 工具由 8 个增加到 9 个；全量测试 491 项通过。
+- 更新/编辑：`prepare(target_path=...)` 生成整页替换预览（同时展示旧正文、旧标题与旧/新 `sources`/`related`），通过 `PUT /pages/<path>` 提交；默认保留原有元数据，仅显式传入 `sources`/`related` 才改变。commit 前拒绝目标页面消失（`TARGET_MISSING`）、正文变化（`TARGET_CHANGED`）、元数据变化（`TARGET_METADATA_CHANGED`）与读回失败（`TARGET_UNREADABLE`），避免覆盖他人编辑或丢失正文/来源。
+- 删除/归档：新增 `lingxi_memory_archive`（`DELETE /pages/<path>`）。证据必须通过项目记录结构校验（schema=1、project、唯一完整 `supersedes` 路径列表、`record_kind`），且只能来自项目页或目标页自身的完整 `test`/`history` 记录；commit 前重新读取目标与证据页，证据消失/被改/不可读分别返回 `EVIDENCE_MISSING` / `EVIDENCE_CHANGED` / `EVIDENCE_UNREADABLE`，所有拒绝路径不调用 DELETE。`core/` 与 `wiki/profile/` 始终受保护。
+- 删除 unknown 回执：`receipt` 按 create/replace/delete 分流；删除只做只读对账，目标不存在才记 `deleted_verified`，仍存在返回 `TARGET_STILL_EXISTS`，AUTH/权限/限流/网络错误不解释为已删除，且不重发 DELETE、不新建提案。
+- 已知残余：上游没有可验证的条件写（If-Match/版本号）契约，替换只能把最终完整读取放到 PUT 前，无法完全消除“最终读取后、PUT 前”的跨客户端竞态；不声称该窗口已关闭。
+- MCP 工具由 8 个增加到 9 个；`prepare` 新增可选 `sources`/`related`；全量测试 506 项通过。
 
 ## 0.3.2
 
