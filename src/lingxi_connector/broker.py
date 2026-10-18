@@ -12,6 +12,7 @@ from pathlib import Path
 from datetime import datetime
 from aiohttp import web
 from .cloud import ConnectorError
+from . import collection, page_meta
 from .context import (CACHE_FRESH_SECONDS, CONTEXT_CACHE_MAX_ENTRIES, CONTEXT_TOTAL_TIMEOUT_S,
                       STATE_SERVICE_UNAVAILABLE, _fit_output, build_context, merge_key, new_request_id)
 from .context_audit import AuditSnapshots
@@ -139,6 +140,12 @@ class Broker:
         if operation == 'read':
             return await self.session.read(args.get('path'), args.get('offset', 0), args.get('max_chars', 8000))
         raise ConnectorError('INVALID_INPUT')
+
+    async def browse(self, query, limit=10, tag=''):
+        return await collection.browse(self.session, query, limit, tag)
+
+    async def export(self, query='', paths=None, limit=10, output=''):
+        return await collection.export(self.session, query, paths, limit, output, self.directory)
 
     async def context(self, args):
         """Same-round merge: one retrieval per (epoch, request identity, normalized clues).
@@ -303,6 +310,12 @@ class Broker:
                 data = await self.session.search(args.get('query'), args.get('limit', 5))
             elif operation == 'read' and set(args) <= {'path', 'offset', 'max_chars'}:
                 data = await self.session.read(args.get('path'), args.get('offset', 0), args.get('max_chars', 8000))
+                if isinstance(data, dict) and data.get('source') == 'lingxi_cloud':
+                    data = page_meta.annotate(data)
+            elif operation == 'browse' and set(args) <= {'query', 'limit', 'tag'}:
+                data = await self.browse(args.get('query', ''), args.get('limit', 10), args.get('tag', ''))
+            elif operation == 'export' and set(args) <= {'query', 'paths', 'limit', 'output'}:
+                data = await self.export(args.get('query', ''), args.get('paths'), args.get('limit', 10), args.get('output', ''))
             elif operation == 'context' and set(args) <= {'request', 'project', 'cwd', 'remote', 'request_id', 'turn_id', 'view', 'snapshot_id', 'cursor'}:
                 data = await self.context(args)
             elif operation == 'write-status' and not args:
@@ -310,7 +323,7 @@ class Broker:
             elif operation == 'enable-saving' and not args:
                 # Installation UI obtains explicit consent; not an MCP tool.
                 data = await self.session.verify_create_contract()
-            elif operation == 'prepare' and {'category','title','summary','content'} <= set(args) <= {'category','title','summary','content','assessment_confirmation','target_path','sources','related'}:
+            elif operation == 'prepare' and {'category','title','summary','content'} <= set(args) <= {'category','title','summary','content','assessment_confirmation','target_path','sources','related','tags','attrs'}:
                 data = await self.writeback.prepare(**args)
             elif operation == 'validate' and {'category','title','summary','content'} <= set(args) <= {'category','title','summary','content','path','project','cwd','remote'}:
                 data = await validate_proposal(self.session, **args)

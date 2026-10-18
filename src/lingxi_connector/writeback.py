@@ -9,6 +9,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from .cloud import ConnectorError, read_url
+from . import page_meta
 from .prepare_assessment import assess
 from .project_identity import normalize_name
 from .project_record import parse_record, record_policy
@@ -199,7 +200,7 @@ class Writeback:
         return assess(category, title, summary, content, pages, unknowns=unknowns), related
 
     async def prepare(self, category, title, summary, content, assessment_confirmation=None, target_path=None,
-                      sources=None, related=None):
+                      sources=None, related=None, tags=None, attrs=None):
         if category not in ('entities','projects','concepts','lessons','profile') or any(not isinstance(x, str) for x in (title,summary,content)):
             raise ConnectorError('INVALID_INPUT')
         if not title.strip() or len(title)>120 or len(summary)>500 or not content.strip() or len(content)>8000:
@@ -210,6 +211,10 @@ class Writeback:
             if values is not None and (not isinstance(values, list) or len(values) > 20 or
                                        any(not isinstance(value, str) or len(value) > 512 for value in values)):
                 raise ConnectorError('INVALID_INPUT')
+        try:
+            tags_value, attrs_value = page_meta.normalize(tags, attrs)
+        except ValueError:
+            raise ConnectorError('INVALID_INPUT') from None
         replace = None
         if target_path is not None:
             # Editing an existing page: read it first so the preview shows the exact replacement
@@ -217,13 +222,20 @@ class Writeback:
             if _is_protected(target_path):
                 raise ConnectorError('PROTECTED_TARGET')
             replace = await self._existing(target_path)
+        incoming_body, _, _ = page_meta.split(content)
+        old_body, old_tags, old_attrs = page_meta.split(replace['content']) if replace is not None else ('', [], {})
+        final_tags = old_tags if tags is None else tags_value
+        final_attrs = old_attrs if attrs is None else attrs_value
+        final_content = page_meta.with_meta(incoming_body, final_tags, final_attrs)
+        if not final_content.strip() or len(final_content) > 8000:
+            raise ConnectorError('INVALID_INPUT')
         async with self.lock:
             self.proposals = {k:v for k,v in self.proposals.items() if self.clock() < v['expires']}
             if len(self.proposals) >= 64:
                 raise ConnectorError('PROPOSAL_LIMIT')
             account = await self.session.identity()
             epoch = self.session.epoch
-            assessment, related_pages = await self._assessment(category, title, summary, content)
+            assessment, related_pages = await self._assessment(category, title, summary, final_content)
             checked_account = await self.session.identity()
             if epoch != self.session.epoch or account != checked_account:
                 raise ConnectorError('ACCOUNT_CHANGED')
@@ -237,8 +249,8 @@ class Writeback:
                 operation = 'create'
             front_sources = list(sources) if sources is not None else (previous_view['sources'] if previous_view else [])
             front_related = list(related) if related is not None else (previous_view['related'] if previous_view else [])
-            payload = {'path':path, 'front_matter':{'title':title,'summary':summary,'sources':front_sources,'related':front_related}, 'content':content}
-            review_key = digest({'draft': {'category':category,'title':title,'summary':summary,'content':content},
+            payload = {'path':path, 'front_matter':{'title':title,'summary':summary,'sources':front_sources,'related':front_related}, 'content':final_content}
+            review_key = digest({'draft': {'category':category,'title':title,'summary':summary,'content':final_content},
                                  'assessment':assessment, 'account_tag':digest(account), 'epoch':epoch})
             reviewed = assessment_confirmation == review_key
             proposal = {'payload':payload, 'sha256':digest(payload), 'account_tag':digest(account), 'epoch':epoch, 'expires':self.clock()+600,
@@ -253,14 +265,16 @@ class Writeback:
             preview = {'proposal_id':identifier, 'preview':payload, 'sha256':proposal['sha256'], 'expires_in_seconds':600, 'related_existing':related_pages,
                     'assessment':assessment, 'assessment_review_key':review_key, 'assessment_reviewed':reviewed,
                     'requires_user_authorization':True, 'write_enabled':enabled, 'blocked_reason':reason,
-                    'operation': operation}
+                    'operation': operation, 'tags': final_tags, 'attrs': final_attrs}
             if replace is not None:
                 preview['replacing'] = {'path': path,
                                         'previous_title': previous_view['title'],
                                         'previous_content_chars': len(replace['content']),
                                         'previous_content': replace['content'],
                                         'previous_front_matter': previous_view,
-                                        'next_front_matter': payload['front_matter']}
+                                        'next_front_matter': payload['front_matter'],
+                                        'previous_tags': old_tags, 'previous_attrs': old_attrs,
+                                        'next_tags': final_tags, 'next_attrs': final_attrs}
             return copy.deepcopy(preview)
 
     async def prepare_archive(self, target_path, superseded_by=None):

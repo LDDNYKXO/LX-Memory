@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from lingxi_connector.cloud import ConnectorError
+from lingxi_connector import page_meta
 from lingxi_connector.writeback import Writeback
 
 TARGET = 'wiki/concepts/lingxi-connector-existing'
@@ -223,6 +224,44 @@ class ReplaceTests(unittest.IsolatedAsyncioTestCase):
         r = await self.w.commit(p['proposal_id'])
         self.assertEqual(r['state'], 'saved_verified')
         self.assertEqual((self.session.posts, self.session.puts), (1, 0))
+
+
+    async def test_create_with_tags_and_attrs(self):
+        p = await self.w.prepare('concepts', 't', 's', 'body', tags=['偏好', '决策'], attrs={'领域': '记忆'})
+        self.assertEqual(p['tags'], ['偏好', '决策'])
+        self.assertEqual(p['attrs'], {'领域': '记忆'})
+        self.assertIn('<!-- lx-memory-meta', p['preview']['content'])
+        r = await self.w.commit(p['proposal_id'])
+        self.assertEqual(r['state'], 'saved_verified')
+        self.assertIn('<!-- lx-memory-meta', self.session.page['content'])
+
+    async def test_replace_preserves_tags_by_default(self):
+        self.session.page['content'] = page_meta.with_meta('old body', ['偏好'], {'领域': '记忆'})
+        p = await self.w.prepare('concepts', 'new title', 'new summary', 'new body', target_path=TARGET)
+        self.assertEqual(p['tags'], ['偏好'])
+        self.assertEqual(p['attrs'], {'领域': '记忆'})
+        self.assertEqual(p['replacing']['previous_tags'], ['偏好'])
+        r = await self.w.commit(p['proposal_id'])
+        self.assertEqual(r['state'], 'saved_verified')
+        body, tags, attrs = page_meta.split(self.session.page['content'])
+        self.assertEqual(body, 'new body')
+        self.assertEqual((tags, attrs), (['偏好'], {'领域': '记忆'}))
+
+    async def test_replace_can_clear_or_change_tags(self):
+        self.session.page['content'] = page_meta.with_meta('old body', ['偏好'], {'领域': '记忆'})
+        p = await self.w.prepare('concepts', 'new title', 'new summary', 'new body',
+                                 target_path=TARGET, tags=[], attrs={})
+        self.assertEqual(p['tags'], [])
+        self.assertEqual(p['attrs'], {})
+        r = await self.w.commit(p['proposal_id'])
+        self.assertEqual(r['state'], 'saved_verified')
+        self.assertNotIn('<!-- lx-memory-meta', self.session.page['content'])
+        self.assertEqual(self.session.page['content'], 'new body')
+
+    async def test_invalid_tags_are_rejected(self):
+        with self.assertRaises(ConnectorError) as raised:
+            await self.w.prepare('concepts', 't', 's', 'body', tags=['x'] * 11)
+        self.assertEqual(raised.exception.code, 'INVALID_INPUT')
 
 
 if __name__ == '__main__':

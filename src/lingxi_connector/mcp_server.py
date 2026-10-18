@@ -47,8 +47,8 @@ def create_server(root):
         return await invoke('validate', args)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True))
-    async def lingxi_memory_prepare(category: str, title: str, summary: str, content: str, assessment_confirmation: str | None = None, target_path: str = '', sources: list[str] | None = None, related: list[str] | None = None) -> dict:
-        """Prepare full exact preview and bounded project duplicate/change/conflict assessment; no cloud write. Show all gaps/conflicts. Only after human confirms those specific issues, re-prepare with assessment_review_key as assessment_confirmation. That acknowledges issues, never authorizes commit: show the new exact preview and obtain separate authorization. Never infer consent or claim full-library deduplication. Passing target_path makes the preview an exact whole-page replacement of that existing page and includes its previous body and front matter so the caller can confirm what will be overwritten; sources/related default to the previous page values and only change when explicitly passed."""
+    async def lingxi_memory_prepare(category: str, title: str, summary: str, content: str, assessment_confirmation: str | None = None, target_path: str = '', sources: list[str] | None = None, related: list[str] | None = None, tags: list[str] | None = None, attrs: dict[str, str] | None = None) -> dict:
+        """Prepare full exact preview and bounded project duplicate/change/conflict assessment; no cloud write. Show all gaps/conflicts. Only after human confirms those specific issues, re-prepare with assessment_review_key as assessment_confirmation. That acknowledges issues, never authorizes commit: show the new exact preview and obtain separate authorization. Never infer consent or claim full-library deduplication. Passing target_path makes the preview an exact whole-page replacement of that existing page and includes its previous body and front matter so the caller can confirm what will be overwritten; sources/related default to the previous page values and only change when explicitly passed. tags/attrs are stored as page metadata (max 10 each) and also default to the previous page values on replacement."""
         args = {'category':category,'title':title,'summary':summary,'content':content}
         if assessment_confirmation is not None:
             args['assessment_confirmation'] = assessment_confirmation
@@ -58,7 +58,33 @@ def create_server(root):
             args['sources'] = sources
         if related is not None:
             args['related'] = related
+        if tags is not None:
+            args['tags'] = tags
+        if attrs is not None:
+            args['attrs'] = attrs
         return await invoke('prepare', args)
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True))
+    async def lingxi_memory_browse(query: str, limit: int = 10, tag: str = '') -> dict:
+        """Read-only search-derived view: rows with title/summary, record_kind, as_of, tags and attrs. `tag` filters rows (exact tag match) after reading candidates; at most 20 candidate reads. No write."""
+        args = {'query': query, 'limit': limit}
+        if tag:
+            args['tag'] = tag
+        return await invoke('browse', args)
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True))
+    async def lingxi_memory_export(query: str = '', paths: list[str] | None = None, limit: int = 10, output: str = '') -> dict:
+        """Export full pages to a local JSON snapshot (cloud is read-only). Select pages by `paths` or by a search `query`; `output` must be an absolute path under the user profile, temp or connector runtime. Returns the file path, per-page sha256 list and skipped entries."""
+        args = {}
+        if query:
+            args['query'] = query
+        if paths is not None:
+            args['paths'] = paths
+        if limit != 10:
+            args['limit'] = limit
+        if output:
+            args['output'] = output
+        return await invoke('export', args)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True))
     async def lingxi_memory_archive(target_path: str, superseded_by: str = '') -> dict:

@@ -23,7 +23,7 @@
 
 可以说“查询灵犀记忆，继续上次项目”，或“请记住：……”。先检查连接，再读取相关记忆。只有用户明确要求保存时才生成预览、按授权提交、读回验证；普通聊天不自动保存。写入默认新增 wiki 条目；编辑既有页面走 `prepare(target_path=...)` 的整页替换预览，删除只允许已被明确替代或自身声明为测试/历史记录的页面，`core/` 与 `wiki/profile/` 始终受保护。
 
-九个 MCP 工具为 `status`、`search`、`read`、`prepare`、`commit`、`receipt`、`context`、`validate`、`archive`。`context` 分层返回必需背景，并在可用时附带 profile/lessons 个人层；`validate` 在项目交接提交前模拟替代链，只有验证通过才应 commit；`prepare` 传 `target_path` 表示整页替换，默认保留原页面的 `sources`/`related`，仅在显式传入时改变，并在预览中同时给出旧正文、旧元数据与新元数据；`archive` 只对通过项目记录结构校验、且已被明确替代（或自身为 `test`/`history` 记录）的页面生成删除预览，提交前会重新读取目标与证据页再确认，删除不可恢复。支持 Skill 的客户端可以另外安装配套 Skill；MCP 本身不依赖客户端具备 Skill 功能。灵犀桌面助手不必一直开着。
+十一个 MCP 工具为 `status`、`search`、`read`、`prepare`、`commit`、`receipt`、`context`、`validate`、`archive`、`browse`、`export`。`context` 分层返回必需背景，并在可用时附带 profile/lessons 个人层；`validate` 在项目交接提交前模拟替代链，只有验证通过才应 commit；`prepare` 传 `target_path` 表示整页替换，默认保留原页面的 `sources`/`related`/`tags`/`attrs`，仅在显式传入时改变，并在预览中同时给出旧正文、旧元数据与新元数据；`archive` 只对通过项目记录结构校验、且已被明确替代（或自身为 `test`/`history` 记录）的页面生成删除预览，提交前会重新读取目标与证据页再确认，删除不可恢复；`browse` 基于检索返回带 `record_kind`/`as_of`/`tags`/`attrs` 的紧凑视图，可按标签过滤；`export` 把指定页面导出为本地 JSON 快照（云端只读）。标签与属性以页面末尾的单行注释保存，不改变正文语义，`read` 会同时返回解析结果。支持 Skill 的客户端可以另外安装配套 Skill；MCP 本身不依赖客户端具备 Skill 功能。灵犀桌面助手不必一直开着。
 
 同一 Windows 用户的多个 Agent 复用一份本产品登录。换电脑首次登录一次；登录失效时按正常流程重新登录。首次开启保存功能仍需本人主动选择安装向导中的验证步骤，本入口不自动写入测试记忆。
 

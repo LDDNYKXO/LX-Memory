@@ -40,10 +40,12 @@ class LayeredStdioTests(unittest.TestCase):
                                      'clientInfo':{'name':'isolated-test','version':'1'}})
             send({'jsonrpc':'2.0','method':'notifications/initialized'})
             tools = request(2,'tools/list',{})['tools']
-            self.assertEqual(len(tools),9)
+            self.assertEqual(len(tools),11)
             names = {t['name'] for t in tools}
             self.assertIn('lingxi_memory_validate', names)
             self.assertIn('lingxi_memory_archive', names)
+            self.assertIn('lingxi_memory_browse', names)
+            self.assertIn('lingxi_memory_export', names)
             tool = next(t for t in tools if t['name']=='lingxi_memory_context')
             self.assertEqual(tool['inputSchema']['required'],['request'])
             result = request(3,'tools/call',{'name':'lingxi_memory_context',
