@@ -12,9 +12,40 @@ from pathlib import Path
 from datetime import datetime
 from aiohttp import web
 from .cloud import ConnectorError
-from .context import (CACHE_FRESH_SECONDS, CONTEXT_CACHE_MAX_ENTRIES, STATE_SERVICE_UNAVAILABLE,
-                      _fit_output, build_context, merge_key, new_request_id)
+from .context import (CACHE_FRESH_SECONDS, CONTEXT_CACHE_MAX_ENTRIES, CONTEXT_TOTAL_TIMEOUT_S,
+                      STATE_SERVICE_UNAVAILABLE, _fit_output, build_context, merge_key, new_request_id)
 from .context_audit import AuditSnapshots
+
+# Finished results and in-flight retrievals are bounded separately: a burst of distinct keys
+# otherwise starts one task each and the finished-result cap never sees them.
+CONTEXT_INFLIGHT_MAX = 4
+CONTEXT_INFLIGHT_WAIT_S = 5.0
+
+
+def _timeout_result(request_id):
+    """Hard-deadline envelope: no retrieval result was produced, so nothing may be presented."""
+    value = _busy_result(request_id)
+    value['unknowns'] = ['背景检索超过硬性时间上限；本轮未产出结论，请重试或缩小项目范围。']
+    value['error'] = {'code': 'CONTEXT_TIMEOUT', 'message': '背景检索超时'}
+    return value
+
+
+def _busy_result(request_id):
+    """Refusal envelope used when the in-flight budget is exhausted; never a fabricated answer."""
+    return {'state': STATE_SERVICE_UNAVAILABLE, 'request_id': request_id,
+            'project': {'selected': None}, 'goal': '',
+            'progress': {'executed': [], 'current': [], 'pending_verification': []},
+            'next_step': '', 'constraints': [], 'sources': [], 'field_sources': {},
+            'unknowns': ['并发背景请求已达上限；未执行本次检索，请稍后重试。'],
+            'conflicts': [], 'retrieved_at': None,
+            'consumption': {'background_sources': 'returned_cloud_sources_only',
+                            'filesystem_background_fallback': False,
+                            'extra_search_fallback': False,
+                            'latest_state_verified': False,
+                            'enforcement': 'consumer_contract_not_host_sandbox'},
+            'budget': {'search_attempts': 0, 'reads': 0, 'chars': 0, 'output_chars': 0,
+                       'truncated': False, 'replacement_reads': 0},
+            'error': {'code': 'CONTEXT_BUSY', 'message': '并发背景请求已达上限'}}
 from .proposal_validation import validate_proposal
 from .session import Session
 from .writeback import Writeback
@@ -95,6 +126,9 @@ class Broker:
         self.stop = asyncio.Event()
         self.context_cache = {}
         self.audit_snapshots = AuditSnapshots()
+        # In-flight retrievals are bounded separately from finished results: every distinct key
+        # otherwise starts its own task, and the finished-result cap alone cannot limit them.
+        self.inflight_slots = asyncio.Semaphore(CONTEXT_INFLIGHT_MAX)
 
     async def _fetch(self, operation, args):
         """The only operations the shared-background path may use; everything else is refused."""
@@ -153,20 +187,39 @@ class Broker:
             if 'task' in entry:
                 # A concurrent identical request joins the retrieval already in flight.
                 return present(await entry['task'], cached=True)
-        task = asyncio.ensure_future(build_context(self._fetch, request=request,
-                                                   project=args.get('project') or '',
-                                                   cwd=args.get('cwd') or '',
-                                                   remote=args.get('remote') or '',
-                                                   request_id=identity, raw=True,
-                                                   include_personal=True))
-        self.context_cache[key] = {'task': task}
         try:
-            data = await task
-        except BaseException:
-            # A lookup that ended in an unexpected failure must never stay in the cache: a later
-            # identical request would otherwise await the same dead future and fail forever.
-            self.context_cache.pop(key, None)
-            raise
+            slots = getattr(self, 'inflight_slots', None)
+            if slots is None:
+                # Tests construct Broker with __new__; the bound is created on first use.
+                slots = asyncio.Semaphore(CONTEXT_INFLIGHT_MAX)
+                self.inflight_slots = slots
+            await asyncio.wait_for(slots.acquire(), CONTEXT_INFLIGHT_WAIT_S)
+        except asyncio.TimeoutError:
+            # Refuse rather than queue unboundedly; the caller retries with its own budget.
+            return _fit_output(_busy_result(identity))
+        try:
+            task = asyncio.ensure_future(build_context(self._fetch, request=request,
+                                                       project=args.get('project') or '',
+                                                       cwd=args.get('cwd') or '',
+                                                       remote=args.get('remote') or '',
+                                                       request_id=identity, raw=True,
+                                                       include_personal=True))
+            self.context_cache[key] = {'task': task}
+            try:
+                # Internal budget checks are advisory; this is the hard ceiling that also covers
+                # lock waits, personal loading and slow upstream reads.
+                data = await asyncio.wait_for(asyncio.shield(task), CONTEXT_TOTAL_TIMEOUT_S + 5)
+            except asyncio.TimeoutError:
+                task.cancel()
+                self.context_cache.pop(key, None)
+                return _fit_output(_timeout_result(identity))
+            except BaseException:
+                # A lookup that ended in an unexpected failure must never stay in the cache: a later
+                # identical request would otherwise await the same dead future and fail forever.
+                self.context_cache.pop(key, None)
+                raise
+        finally:
+            slots.release()
         if data.get('state') == STATE_SERVICE_UNAVAILABLE:
             self.context_cache.pop(key, None)
         else:

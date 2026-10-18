@@ -15,6 +15,7 @@ class FakeSession:
     page = None
     def write_enabled_for(self,account):return self.create_contract_verified
     async def identity(self): return self.account
+    async def status(self, refresh=False): return {'state': 'CONNECTED', 'cloud_available': True}
     async def search(self, query, limit): return {'results':[]}
     async def read(self, path, offset=0, max_chars=20000):
         if self.page is None: raise ConnectorError('PAGE_NOT_FOUND')

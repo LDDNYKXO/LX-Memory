@@ -177,19 +177,24 @@ class Writeback:
                     raise
             else:
                 return self._result(proposal_id,proposal,'rejected','TARGET_EXISTS')
-            # A project handoff must pass the same retrieval simulation before the POST.
-            # Virtual sessions used by tests set no `supports_validation` marker; the real
-            # Session does, so the hard gate applies only to a live cloud session.
+            # A project handoff must pass the same retrieval simulation before the POST. The gate is
+            # an invariant of this class: a session that cannot validate is not allowed to write a
+            # project page at all, rather than silently skipping verification.
             target = proposal['payload'].get('path', '')
             category = target.split('/')[1] if target.startswith('wiki/') and len(target.split('/')) > 2 else ''
-            if category == 'projects' and getattr(self.session, 'supports_validation', False):
+            if category == 'projects':
                 front = proposal['payload'].get('front_matter') or {}
-                validation = await validate_proposal(
-                    self.session, category, front.get('title') or '',
-                    front.get('summary') or '', proposal['payload'].get('content') or '',
-                    path=target,
-                )
-                if validation.get('state') not in ('ok', 'not_applicable'):
+                try:
+                    validation = await validate_proposal(
+                        self.session, category, front.get('title') or '',
+                        front.get('summary') or '', proposal['payload'].get('content') or '',
+                        path=target,
+                    )
+                except ConnectorError:
+                    return self._result(proposal_id, proposal, 'blocked', 'VALIDATION_UNAVAILABLE')
+                if validation.get('state') == 'not_applicable':
+                    return self._result(proposal_id, proposal, 'blocked', 'VALIDATION_UNAVAILABLE')
+                if validation.get('state') != 'ok':
                     return self._result(proposal_id, proposal, 'blocked', 'VALIDATION_FAILED')
             # Durable state precedes POST; crashes can only be reconciled with GET.
             self._result(proposal_id,proposal,'unknown','SUBMISSION_STARTED')

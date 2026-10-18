@@ -6,9 +6,12 @@ from lingxi_connector.proposal_validation import validate_proposal
 from test_record_policy import body
 
 
-def handoff(supersedes=(), as_of='2026-10-17T12:00:00+08:00', project='Example'):
-    return (body(project=project, supersedes=list(supersedes), as_of=as_of, record_kind='handoff')
+def handoff(supersedes=(), as_of='2026-10-17T12:00:00+08:00', project='Example', constraints=True):
+    text = (body(project=project, supersedes=list(supersedes), as_of=as_of, record_kind='handoff')
             + '### 项目身份与目标\nGoal\n### 当前状态\nState\n### 下一步\nNext\n')
+    if constraints:
+        text += '### 边界\n不自动发布。\n'
+    return text
 
 
 def hit(path, title='Example', project='Example'):
@@ -48,7 +51,7 @@ class ProposalValidationTests(unittest.IsolatedAsyncioTestCase):
         paths = [f'wiki/projects/example-old{i}' for i in range(1, 5)]
         pages = {path: page(path, body(supersedes=[], as_of='2026-10-17T12:00:00+08:00'))
                  for path in paths}
-        pages['core/核心记忆'] = page('core/核心记忆', '规则')
+        pages['core/核心记忆'] = page('core/核心记忆', '### 边界\n不自动保存。\n')
         session = FakeSession([hit(path) for path in paths], pages)
         content = handoff(supersedes=paths)
         return session, paths, content
@@ -82,3 +85,24 @@ class ProposalValidationTests(unittest.IsolatedAsyncioTestCase):
         session, _, _ = self.fixture()
         result = await validate_proposal(session, 'lessons', '经验', 'summary', '# 经验')
         self.assertEqual(result['state'], 'not_applicable')
+
+    async def test_missing_constraints_blocks_even_when_chain_resolves(self):
+        session, paths, _ = self.fixture()
+        content = handoff(supersedes=paths, constraints=False)
+        result = await validate_proposal(session, 'projects', 'Example 交接：新', 'summary',
+                                         content, path='wiki/projects/validation-draft')
+        self.assertEqual(result['state'], 'blocked')
+        self.assertEqual(result['reason'], 'ESSENTIAL_BACKGROUND_INCOMPLETE')
+        self.assertIn('constraints', result['essential_gaps'])
+
+    async def test_history_only_progress_blocks_complete_claim(self):
+        session, paths, _ = self.fixture()
+        # No current-state section: the raw pipeline keeps `progress.current` empty.
+        content = (body(project='Example', supersedes=list(paths), as_of='2026-10-17T12:00:00+08:00',
+                        record_kind='handoff')
+                   + '### 项目身份与目标\nGoal\n### 已确认进展\nDone\n### 下一步\nNext\n'
+                   + '### 边界\n不自动发布。\n')
+        result = await validate_proposal(session, 'projects', 'Example 交接：新', 'summary',
+                                         content, path='wiki/projects/validation-draft')
+        self.assertEqual(result['state'], 'blocked')
+        self.assertIn('progress.current', result['essential_gaps'])

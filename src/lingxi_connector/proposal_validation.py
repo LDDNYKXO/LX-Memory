@@ -95,6 +95,33 @@ def _blocked(reason, **extra):
     return value
 
 
+def _first_record(record, content, path, project_name):
+    """Gate for the first record of a project: no chain exists, so judge the draft's own sections.
+
+    Without this branch a brand-new project could never save its first handoff, because the
+    retrieval pipeline reports `partial` precisely when no project page exists yet.
+    """
+    from .context import heading_fields
+    fields = {field for field, _, _ in heading_fields(content)}
+    gaps = []
+    if not (str(record.get('goal') or '').strip() or 'goal' in fields):
+        gaps.append('goal')
+    if 'progress.current' not in fields:
+        gaps.append('progress.current')
+    if not (str(record.get('next_step') or '').strip() or 'next_step' in fields):
+        gaps.append('next_step')
+    if not (('constraints' in fields) or ('constraints' in record)):
+        gaps.append('constraints')
+    base = {'predicted_state': 'first_record', 'selected': None, 'draft_path': path,
+            'project': project_name, 'as_of': record.get('as_of'), 'candidate_count': 0,
+            'unverified_candidates': [], 'essential_gaps': gaps, 'conflicts': [], 'unknowns': [],
+            'limitation': 'No same-project record existed yet: the draft is treated as the first '
+                          'record, so only its own sections were checked.'}
+    if gaps:
+        return _blocked('ESSENTIAL_BACKGROUND_INCOMPLETE', **base)
+    return {'state': 'ok', **base}
+
+
 async def validate_proposal(session, category, title, summary, content, path=None,
                             project=None, cwd='', remote='', now=None):
     """Simulate the draft as the newest project page and return a gate result.
@@ -175,8 +202,37 @@ async def validate_proposal(session, category, title, summary, content, path=Non
 
     predicted = result.get('state')
     selected = (result.get('project') or {}).get('selected')
+    candidate_count = (result.get('project') or {}).get('candidate_count') or 0
+    # The virtual draft is always one of the candidates, so "no existing record" means the draft is
+    # the only one: there is no replacement chain to contradict.
+    if candidate_count <= 1 and (selected in (None, path)):
+        return _first_record(record, content, path, project_name)
     conflicts = list(result.get('conflicts') or [])
     unknowns = list(result.get('unknowns') or [])
+    unverified = (result.get('project') or {}).get('unverified_candidates') or []
+    # The raw pipeline treats a project answer with only `progress.executed` as complete, while the
+    # published output layer downgrades it. The gate must be at least as strict as what consumers
+    # will see, otherwise a commit could pass validation and still produce a partial background.
+    essential_gaps = []
+    if not selected:
+        essential_gaps.append('project')
+    if not str(result.get('goal') or '').strip():
+        essential_gaps.append('goal')
+    progress = result.get('progress') or {}
+    # The published output layer requires `progress.current`; history-only progress stays partial,
+    # so the gate must not accept it either.
+    if not progress.get('current'):
+        essential_gaps.append('progress.current')
+    if not str(result.get('next_step') or '').strip() and predicted != 'conflict':
+        essential_gaps.append('next_step')
+    # An empty constraints list is only acceptable when the raw pipeline reports that every
+    # required scope declared its constraints; otherwise the boundary is simply unknown.
+    constraints_status = result.get('_constraints_status') or (
+        'complete' if result.get('constraints') else 'unknown')
+    if constraints_status != 'complete':
+        essential_gaps.append('constraints')
+    if unverified:
+        essential_gaps.append('unverified_candidates')
     base = {
         'predicted_state': predicted,
         'selected': selected,
@@ -184,14 +240,17 @@ async def validate_proposal(session, category, title, summary, content, path=Non
         'project': project_name,
         'as_of': record.get('as_of'),
         'candidate_count': (result.get('project') or {}).get('candidate_count'),
+        'unverified_candidates': unverified,
+        'essential_gaps': essential_gaps,
         'conflicts': conflicts,
         'unknowns': unknowns,
         'budget': result.get('budget'),
         'limitation': 'The draft is a virtual search hit; real index ranking/latency is only '
                       'confirmed after commit by search/context.',
     }
-    if predicted == 'complete' and selected == path and not conflicts:
-        return {'state': 'ok', **base}
+    if predicted == 'complete' and selected == path and not conflicts and not essential_gaps:        return {'state': 'ok', **base}
+    if essential_gaps and predicted == 'complete' and selected == path:
+        return _blocked('ESSENTIAL_BACKGROUND_INCOMPLETE', **base)
     if predicted == 'complete':
         return _blocked('DRAFT_NOT_SELECTED', **base)
     if predicted == 'conflict':

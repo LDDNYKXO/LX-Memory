@@ -155,6 +155,8 @@ class RetrievalPolicyTests(unittest.IsolatedAsyncioTestCase):
     async def test_descriptive_handoff_candidate_is_prioritized_when_over_window(self):
         # Seven candidates are returned; the newest one has a descriptive handoff title and must be
         # included in the five-candidate read window without turning `updated` into a version pick.
+        # The two candidates dropped only because of the read budget stay *known*: the result must
+        # therefore stay partial instead of claiming a complete replacement chain.
         records = {f'old{i}': {'record_kind': 'handoff', 'title': 'Example'} for i in range(1, 7)}
         records['new'] = {'record_kind': 'handoff', 'title': 'Example 交接：最新',
                           'links': [f'old{i}' for i in range(1, 5)]}
@@ -163,7 +165,11 @@ class RetrievalPolicyTests(unittest.IsolatedAsyncioTestCase):
         r = await build_context(f, project='Example', remote='https://github.com/owner/example')
         self.assertEqual(r['project']['candidate_count'], 7)
         self.assertEqual(r['project']['selected'], 'wiki/projects/example-new')
-        self.assertEqual(r['state'], 'complete')
+        self.assertEqual(r['state'], 'partial')
+        unverified = r['project']['unverified_candidates']
+        self.assertEqual(len(unverified), 2)
+        self.assertTrue(any('old5' in path or 'old6' in path for path in unverified))
+        self.assertTrue(any('未核验的同项目候选' in item for item in r['unknowns']))
         self.assertEqual(r['budget']['search_attempts'], 1)
 
     async def test_failed_candidate_has_no_retry_or_unsafe_fallback(self):

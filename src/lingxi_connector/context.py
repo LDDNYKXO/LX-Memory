@@ -23,6 +23,8 @@ SEARCH_RESULT_LIMIT = 20  # Wider than the read window: descriptive handoff titl
 PERSONAL_SEARCH_LIMIT = 20
 PERSONAL_PROFILE_EXCERPT = 400
 PERSONAL_LESSON_EXCERPT = 200
+PERSONAL_TITLE_MAX = 120
+PERSONAL_SUMMARY_MAX = 240
 CORE_MEMORY_READS = 1
 PROJECT_CANDIDATES_MAX = 2
 VERSION_CANDIDATES_MAX = 5  # Returned search window only; never fetch arbitrary supersedes links.
@@ -383,6 +385,13 @@ async def _complete_replacement_evidence(fetch, result, contents, markers, polic
     return resolution, bridges
 
 
+def _unverified_notice(rows, sample=3):
+    names = '、'.join(row['path'] for row in rows[:sample])
+    more = '' if len(rows) <= sample else f' 等 {len(rows)} 份'
+    return ('已发现但未核验的同项目候选（超出读取上限）：' + names + more
+            + '；当前结论不覆盖这些记录，不能据此认定不存在分叉或冲突。')
+
+
 def _replacement_gap(result, resolution, contents, markers, current):
     """Known project, unknown version: do not ask the user to choose the same project again."""
     referenced = {p for marker in markers.values() if marker for p in marker['supersedes'] if p in contents}
@@ -441,8 +450,12 @@ async def _load_personal(fetch, result, clue_set, read_cache):
     lesson_items = [item for item in loaded if item[0] == 'lesson']
     def compact(item, limit):
         _, path, front, content = item
-        return {'path': path, 'title': front.get('title') or '',
-                'summary': front.get('summary') or '',
+        title = front.get('title') if isinstance(front.get('title'), str) else ''
+        summary = front.get('summary') if isinstance(front.get('summary'), str) else ''
+        # Title and summary are attacker-adjacent page metadata, not excerpts: bound them too, or a
+        # long summary would bypass the excerpt budget and dominate the output.
+        return {'path': path, 'title': title[:PERSONAL_TITLE_MAX],
+                'summary': summary[:PERSONAL_SUMMARY_MAX],
                 'excerpt': content[:limit]}
     personal = {}
     if profile:
@@ -509,6 +522,10 @@ async def _build_context(fetch, request='', project='', cwd='', remote='', reque
     selection_candidates = selection['candidates']
     result['project']['candidate_count'] = len(selection_candidates)
     version_candidates = selection_candidates
+    # Candidates dropped only to fit the read budget are still *known* same-project records.
+    # Writing `complete` while ignoring them would hide a possible fork/conflict, so they are
+    # reported as an explicit evidence gap instead of being silently discarded.
+    unverified_candidates = []
     if len(version_candidates) > VERSION_CANDIDATES_MAX:
         # A descriptive handoff title ("Project 交接：…") can rank outside the short-title window.
         # When such a page is the newest result, prefer it plus the most recent remaining candidates:
@@ -521,12 +538,17 @@ async def _build_context(fetch, request='', project='', cwd='', remote='', reque
             rest = [row for row in version_candidates if row not in explicit]
             explicit = sorted(explicit, key=_updated_key, reverse=True)
             rest = sorted(rest, key=_updated_key, reverse=True)
-            version_candidates = (explicit + rest)[:VERSION_CANDIDATES_MAX]
+            ordered = explicit + rest
+            version_candidates = ordered[:VERSION_CANDIDATES_MAX]
+            unverified_candidates = ordered[VERSION_CANDIDATES_MAX:]
         else:
             result['project']['candidates'] = selection_candidates[:PROJECT_CANDIDATES_MAX]
             result['state'] = STATE_PARTIAL
             result['unknowns'].append('版本候选超过有限处理上限，未读取或任选当前记录。')
             return result
+    if unverified_candidates:
+        result['project']['unverified_candidates'] = [row['path'] for row in unverified_candidates]
+        result['unknowns'].append(_unverified_notice(unverified_candidates))
     candidates = version_candidates[:PROJECT_CANDIDATES_MAX]
     result['project']['candidates'] = candidates
     if version_candidates:
@@ -639,6 +661,23 @@ async def _build_context(fetch, request='', project='', cwd='', remote='', reque
                 return result
             candidates = [c for c in current if c['path'] == path]
             selection = {**selection, 'state': 'ok', 'candidates': candidates}
+            # A dropped candidate named in the `supersedes` list of ANY verified same-project record
+            # is definitively historical: that record explicitly replaces it. Union the links from
+            # the whole read window, not just the selected page, so a chain that spans several
+            # verified pages still accounts for its older members.
+            covered = set()
+            for marker in markers.values():
+                if marker:
+                    covered.update(marker['supersedes'])
+            if covered and unverified_candidates:
+                remaining = [row for row in unverified_candidates if row['path'] not in covered]
+                if len(remaining) != len(unverified_candidates):
+                    unverified_candidates = remaining
+                    result['project']['unverified_candidates'] = [row['path'] for row in remaining]
+                    result['unknowns'] = [item for item in result['unknowns']
+                                          if '未核验的同项目候选' not in item]
+                    if remaining:
+                        result['unknowns'].append(_unverified_notice(remaining))
             for c in current:
                 decision = decisions[c['path']]
                 decision.update(decision='selected' if c['path'] == path else 'superseded',
@@ -788,6 +827,9 @@ async def _build_context(fetch, request='', project='', cwd='', remote='', reque
         result['unknowns'].append('背景必要字段缺失：' + ', '.join(missing))
         if result['state'] == STATE_COMPLETE:
             result['state'] = STATE_PARTIAL
+    if unverified_candidates and result['state'] == STATE_COMPLETE:
+        # A complete claim must cover every same-project record this request already discovered.
+        result['state'] = STATE_PARTIAL
     if include_personal:
         try:
             await _load_personal(fetch, result, clue_set, read_cache)

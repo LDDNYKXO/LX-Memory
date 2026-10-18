@@ -18,7 +18,8 @@ NOW = datetime(2026, 10, 16, 10, tzinfo=timezone.utc)
 def body(project='Example', supersedes=(), as_of='2026-10-16T08:00:00+00:00', **extra):
     marker = dict(schema=1, project=project, supersedes=list(supersedes), as_of=as_of,
                   record_kind='handoff', **extra)
-    return '<!-- memory-project-record ' + json.dumps(marker, ensure_ascii=False) + ' -->\n### 目标\nG\n### 当前状态\nS\n### 下一步\nN'
+    return ('<!-- memory-project-record ' + json.dumps(marker, ensure_ascii=False) + ' -->\n'
+            '### 目标\nG\n### 当前状态\nS\n### 下一步\nN\n### 边界\nB')
 
 
 def page(path='wiki/projects/old', content=None, **extra):
