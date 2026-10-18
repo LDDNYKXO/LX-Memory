@@ -4,6 +4,7 @@ param(
     [switch]$Check,
     [switch]$Login,
     [switch]$RememberLogin,
+    [switch]$ReplaceSkill,
     [string]$PythonExe = '',
     [string]$Ref = 'main'
 )
@@ -112,7 +113,7 @@ function Get-ControllerHash([byte[]]$Bytes) {
     try { return [BitConverter]::ToString($digest.ComputeHash($Bytes)).Replace('-', '').ToLowerInvariant() }
     finally { $digest.Dispose() }
 }
-$expectedControllerSha256 = 'f056310cb76ec7d6388deb1ffe1ed41d41aaea140b23b6b14e16992eeb7965be'
+$expectedControllerSha256 = 'b24468e8d149b23a18394be01cf3e945d4d9a9862606395b4ddc214a868089f4'
 $agentScript = Join-Path $PSScriptRoot 'agent_install.py'
 $adjacentControllerVerified = (Test-Path -LiteralPath $agentScript -PathType Leaf) -and ((Get-ControllerHash ([System.IO.File]::ReadAllBytes($agentScript))) -eq $expectedControllerSha256)
 if (-not $adjacentControllerVerified) {
@@ -121,7 +122,7 @@ if (-not $adjacentControllerVerified) {
     # Separate identity and exact hash prevent reuse of an old private/GitHub-CLI controller.
     $agentScript = Join-Path $downloadDir ('agent_install-public-' + $expectedControllerSha256 + '.py')
     if (-not (Test-Path -LiteralPath $agentScript -PathType Leaf)) {
-    $file = Read-GitHubJson ('repos/LDDNYKXO/lingxi-memory-connector/contents/agent_install.py?ref=' + $Ref)
+    $file = Read-GitHubJson ('repos/LDDNYKXO/LX-Memory/contents/agent_install.py?ref=' + $Ref)
     if ($file.encoding -ne 'base64') { throw 'Invalid GitHub source response.' }
     $sourceBytes = [Convert]::FromBase64String($file.content)
     $blobHeader = [System.Text.Encoding]::ASCII.GetBytes('blob ' + $sourceBytes.Length + [char]0)
@@ -140,5 +141,6 @@ if ($Apply) { $arguments += '--apply' }
 if ($Check) { $arguments += '--check' }
 if ($Login) { $arguments += '--login' }
 if ($RememberLogin) { $arguments += '--remember-login' }
+if ($ReplaceSkill) { $arguments += '--replace-skill' }
 & $PythonExe @arguments
 exit $LASTEXITCODE

@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "projects": [
+    {
+      "name": "LX Memory",
+      "aliases": ["lingxi-memory-connector", "LX-Memory", "灵犀记忆 MCP"],
+      "repository": "github.com/LDDNYKXO/LX-Memory",
+      "repository_aliases": ["github.com/LDDNYKXO/lingxi-memory-connector"]
+    }
+  ]
+}

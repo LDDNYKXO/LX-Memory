@@ -5,6 +5,7 @@ import sys
 import time
 from urllib.request import Request, build_opener, ProxyHandler
 from .cloud import ConnectorError
+from .context import CONTEXT_TOTAL_TIMEOUT_S
 
 def wait_exit(pid):
     if os.name == 'nt' and type(pid) is int and pid > 0:
@@ -23,7 +24,19 @@ def wait_exit(pid):
             finally:
                 api.CloseHandle(handle)
 
-def call(root, operation, args=None, autostart=True):
+def _is_timeout(error):
+    """A transport timeout, also when urllib wraps it in `URLError.reason`."""
+    return isinstance(error, TimeoutError) or isinstance(getattr(error, 'reason', None), TimeoutError)
+
+def _transport_timeout(operation, timeout=None):
+    """An explicit timeout wins; the background entry gets its own budget; old operations keep theirs."""
+    if timeout is not None:
+        return timeout
+    if operation == 'context':
+        return CONTEXT_TOTAL_TIMEOUT_S
+    return 240 if operation == 'enable-saving' else 65
+
+def call(root, operation, args=None, autostart=True, timeout=None):
     descriptor = root / 'runtime' / 'session' / 'connection.json'
     started = False
     opener = build_opener(ProxyHandler({}))
@@ -38,7 +51,7 @@ def call(root, operation, args=None, autostart=True):
                           data=json.dumps(args or {}).encode('utf-8'),
                           headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token}, method='POST')
             request_attempted = True
-            with opener.open(req, timeout=240 if operation == 'enable-saving' else 65) as response:
+            with opener.open(req, timeout=_transport_timeout(operation, timeout)) as response:
                 result = json.load(response)
             if not result['ok']:
                 error = result['error']
@@ -48,7 +61,11 @@ def call(root, operation, args=None, autostart=True):
             return result['data']
         except ConnectorError:
             raise
-        except (OSError, ValueError, KeyError):
+        except (OSError, ValueError, KeyError) as error:
+            if operation == 'context' and request_attempted and _is_timeout(error):
+                # The transport budget equals the server budget: a timeout means the background
+                # read did not finish in time and re-issuing it would repeat the whole cost.
+                raise ConnectorError('NETWORK_ERROR', '背景读取超时，未自动重发。') from None
             if operation == 'enable-saving' and request_attempted:
                 raise ConnectorError('WRITE_OUTCOME_UNKNOWN', '校验请求结果不明确，未自动重发。') from None
             if not autostart:

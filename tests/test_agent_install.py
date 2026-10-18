@@ -77,6 +77,41 @@ class AgentInstallTests(unittest.TestCase):
         for path in ('runtime/session/remember.json', 'vendor/python/python.exe', '../run.py', 'src/../run.py', 'src/lingxi_connector/secret.json'):
             self.assertFalse(module.source_file(path), path)
 
+    def test_source_file_allows_first_round_deliverables(self):
+        module = self.installer()
+        for path in ('CLIENT-ADAPTERS.md', 'integrations/README.md', 'integrations/capability-matrix.json', 'integrations/rulesync/rulesync.json'):
+            self.assertTrue(module.source_file(path), path)
+        for path in ('integrations/a/b/c/d.json', 'integrations/tool.ps1', 'integrations/x.exe', 'integrations/.git/config', 'integrations/build/package-lock.json', 'integrations/build/package.json'):
+            self.assertFalse(module.source_file(path), path)
+
+    def test_error_payload_is_a_stable_code_with_detail(self):
+        from lingxi_connector.setup import InstallerError
+        module = self.installer()
+        payload = module.error_payload(InstallerError('SKILL_UNKNOWN_MODIFICATION: 技能含未知修改，未覆盖'))
+        self.assertEqual(payload['error'], 'SKILL_UNKNOWN_MODIFICATION')
+        self.assertIn('技能含未知修改', payload['detail'])
+        self.assertEqual(module.error_payload(InstallerError('技能有用户修改'))['error'], 'SETUP_CONFIGURATION_FAILED')
+        self.assertEqual(module.error_payload(module.InstallError('GITHUB_RATE_LIMITED: 限流'))['error'], 'GITHUB_RATE_LIMITED')
+        self.assertEqual(module.error_payload(OSError('disk'))['error'], 'SETUP_CONFIGURATION_FAILED')
+
+    def test_run_reports_installer_error_without_traceback(self):
+        module = self.installer()
+        from lingxi_connector.setup import InstallerError
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            root = home / 'product'
+            (root / 'src/lingxi_connector').mkdir(parents=True)
+            (root / 'run.py').write_text('pass')
+            (root / 'src/lingxi_connector/setup.py').write_text('pass')
+            with patch.object(module.Path, 'home', return_value=home), \
+                 patch.object(module, 'configure_clients', side_effect=InstallerError('SKILL_UNKNOWN_MODIFICATION: 技能含未知修改，未覆盖')), \
+                 contextlib.redirect_stderr(io.StringIO()) as error_output:
+                code = module.run(['--source', str(root), '--apply', '--clients', 'Codex'])
+        self.assertEqual(code, 2)
+        payload = json.loads(error_output.getvalue())
+        self.assertEqual(payload['error'], 'SKILL_UNKNOWN_MODIFICATION')
+        self.assertNotIn('Traceback', error_output.getvalue())
+
     def test_generic_install_exports_configuration_without_editing_unknown_client(self):
         module = self.installer()
         with tempfile.TemporaryDirectory() as directory:
@@ -182,6 +217,33 @@ class AgentInstallTests(unittest.TestCase):
         pin = re.search(r"\$expectedControllerSha256 = '([0-9a-f]{64})'", script).group(1)
         canonical = (ROOT / 'agent_install.py').read_bytes().replace(b'\r\n', b'\n')
         self.assertEqual(pin, hashlib.sha256(canonical).hexdigest())
+
+
+class AgentInstallOutputTests(unittest.TestCase):
+    def installer(self):
+        spec = importlib.util.spec_from_file_location('agent_install', ROOT / 'agent_install.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_run_forces_utf8_output_for_the_calling_agent(self):
+        # The installer answers the calling agent with JSON; a Windows pipe would otherwise emit
+        # the machine ANSI code page, so a UTF-8 reader could not decode the Chinese detail.
+        module = self.installer()
+
+        class Stream:
+            def __init__(self):
+                self.reconfigured = None
+
+            def reconfigure(self, **kwargs):
+                self.reconfigured = kwargs
+
+        out, err = Stream(), Stream()
+        with patch.object(sys, 'stdout', out), patch.object(sys, 'stderr', err), \
+                patch.object(module, 'main', return_value=0):
+            self.assertEqual(module.run([]), 0)
+        self.assertEqual(out.reconfigured, {'encoding': 'utf-8'})
+        self.assertEqual(err.reconfigured, {'encoding': 'utf-8'})
 
 
 if __name__ == '__main__':

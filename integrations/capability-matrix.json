@@ -1,0 +1,31 @@
+{
+  "schema": "lingxi-memory/capability-matrix/v1",
+  "mechanisms": [
+    "mcp_tool",
+    "rules_injection",
+    "lifecycle"
+  ],
+  "clients": {
+    "Codex": {
+      "mechanism": "rules_injection",
+      "instruction_path": "~/.codex/AGENTS.md",
+      "auto_bootstrap": true
+    },
+    "DSH": {
+      "mechanism": "lifecycle",
+      "instruction_path": "~/.dsh/AGENTS.md",
+      "auto_bootstrap": true
+    },
+    "ZCode": {
+      "mechanism": "mcp_tool",
+      "instruction_path": "~/.zcode/AGENTS.md",
+      "auto_bootstrap": true
+    },
+    "WorkBuddy": {
+      "mechanism": "mcp_tool",
+      "instruction_path": "~/.workbuddy/skills/lingxi-cloud-memory/SKILL.md",
+      "auto_bootstrap": false
+    }
+  },
+  "declarations_are_not_native_acceptance": true
+}

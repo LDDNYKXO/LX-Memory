@@ -27,9 +27,11 @@ async def diagnose(root):
     async with stdio_client(parameters) as (reader,writer):
         async with ClientSession(reader,writer) as session:
             await session.initialize()
-            names=sorted(t.name for t in (await session.list_tools()).tools)
-            expected=sorted('lingxi_memory_'+name for name in ('status','search','read','prepare','commit','receipt'))
-            if names!=expected:raise InstallerError('MCP工具列表不完整')
+            tools=await session.list_tools()
+            names=sorted(t.name for t in tools.tools)
+            from .maintenance import check_tools
+            if not check_tools([{'name':t.name,'input_schema':t.input_schema} for t in tools.tools])['compatible']:
+                raise InstallerError('MCP工具缺失或参数不兼容')
             status=unpack(await session.call_tool('lingxi_memory_status',{}))
             report={'mcp_connected':True,'tools':names,'login_state':status.get('state'),'cloud_verified':False,'desktop_clients_native_verified':False}
             if status.get('state')=='CONNECTED':

@@ -1,6 +1,8 @@
 # 分层返回最小契约（隔离候选，未部署）
 
-背景默认调用保持原参数和七工具数量；新增可选 view=background|audit、snapshot_id、cursor。MCP 工具仍输出文本 JSON，不依赖资源链接或 structuredContent。严格旧 schema 消费者需适配。
+背景默认调用保持原参数和八工具数量；新增可选 view=background|audit、snapshot_id、cursor，以及只读 validate 工具。MCP 工具仍输出文本 JSON，不依赖资源链接或 structuredContent。严格旧 schema 消费者需适配。
+
+当搜索槽位允许时，返回体额外带 `personal`（新版用户画像片段 + 至多 2 条相关经验摘要）并在 `sources` 中列出；该层是可选背景，输出预算不足以容纳必需背景时优先丢弃 personal，不改变 essential 完整性判定。
 
 必需背景保留 state、project、goal、progress、next_step、constraints、sources、field_sources、unknowns、conflicts、budget、consumption。新增 response_schema=2、essential(status/missing_fields/constraints_status)、audit(status/snapshot_id/expires_at)、history_delivery=audit_only。project 保留 selected/title/evidence/policy_evaluated_at/policy_recheck_required；歧义时保留候选。证据缺口结论仍在 unknowns，逐项判定进入审计。sources 只返回支撑字段的元数据，不再返回 content/content_scope/chars；field_sources.constraints.origins 分列核心及项目来源。progress.executed 始终为空，历史在审计；仅有历史执行时 current 保持空并返回 partial，不提升历史为当前。
 

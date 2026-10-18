@@ -1,0 +1,8 @@
+{
+ "name":"lingxi-memory-dsh-adapter",
+ "version":"0.1.0",
+ "private":true,
+ "type":"module",
+ "main":"index.mjs",
+ "description":"Read-only pre-step bridge to the installed Lingxi connector"
+}

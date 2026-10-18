@@ -1,8 +1,11 @@
+import hashlib
 import json
 from pathlib import Path
 import tempfile
 import unittest
-from lingxi_connector.setup import configure, InstallerError
+from unittest.mock import patch
+from lingxi_connector import setup as setup_module
+from lingxi_connector.setup import configure, InstallerError, KNOWN_SKILLS
 
 class SetupTests(unittest.TestCase):
     def setUp(self):
@@ -50,6 +53,39 @@ class SetupTests(unittest.TestCase):
         p=self.home/'.agents/skills/lingxi-cloud-memory/SKILL.md';p.parent.mkdir(parents=True);p.write_text('user edit')
         with self.assertRaises(InstallerError):configure(self.root,self.home,self.python,['Codex'],apply=True)
         self.assertEqual(p.read_text(),'user edit')
+    def test_live_machine_skill_hashes_are_known_product_versions(self):
+        # 2026-10-15 现网实测哈希：不加入白名单会让每台已安装机器重装/升级硬中断。
+        self.assertIn('7cd301a94b16b80427123a4027a856e6db0a6a78a02e55dcd43a0f01750f4053',KNOWN_SKILLS)
+        self.assertIn('b2a6a08685cb69bead347efb92a4eab3fd1889e43f4073902089aac3f388745e',KNOWN_SKILLS)
+    def test_every_released_skill_version_stays_known(self):
+        # 本轮已发布给现网的版本也必须常驻白名单，否则下一次升级会被判成“用户修改”而被拒绝。
+        self.assertIn('5a17c7bcb8f051b4e985961cd7101bd1ed0c19df7f67ad377044510e9241ff65',KNOWN_SKILLS)
+    def test_the_shipped_skill_version_is_whitelisted_for_the_next_upgrade(self):
+        # 本轮真正安装出去的技能哈希也必须入册：否则它一被下一代技能替换，就被误判为用户修改。
+        shipped=(Path(__file__).resolve().parents[1]/'skills/lingxi-cloud-memory/SKILL.md').read_bytes()
+        self.assertIn(hashlib.sha256(shipped).hexdigest(),KNOWN_SKILLS)
+    def test_known_historical_skill_version_upgrades_silently(self):
+        p=self.home/'.agents/skills/lingxi-cloud-memory/SKILL.md';p.parent.mkdir(parents=True)
+        older=b'---\nname: lingxi-cloud-memory\n---\nolder product rules'
+        p.write_bytes(older)
+        with patch.object(setup_module,'KNOWN_SKILLS',{hashlib.sha256(older).hexdigest()}):
+            report=configure(self.root,self.home,self.python,['Codex'],apply=True)
+        self.assertEqual(p.read_bytes(),(self.root/'skills/lingxi-cloud-memory/SKILL.md').read_bytes())
+        self.assertFalse(report['skill_unknown_modification'])
+    def test_unknown_skill_modification_reports_stable_code(self):
+        p=self.home/'.agents/skills/lingxi-cloud-memory/SKILL.md';p.parent.mkdir(parents=True);p.write_text('user edit')
+        with self.assertRaisesRegex(InstallerError,'^SKILL_UNKNOWN_MODIFICATION: '):
+            configure(self.root,self.home,self.python,['Codex'],apply=True)
+        self.assertEqual(p.read_text(),'user edit')
+        self.assertFalse((self.home/'.codex').exists())
+    def test_replace_skill_backs_up_and_reports(self):
+        p=self.home/'.agents/skills/lingxi-cloud-memory/SKILL.md';p.parent.mkdir(parents=True);p.write_text('user edit')
+        report=configure(self.root,self.home,self.python,['Codex'],apply=True,replace_skill=True)
+        self.assertTrue(report['skill_unknown_modification'])
+        self.assertEqual(p.read_bytes(),(self.root/'skills/lingxi-cloud-memory/SKILL.md').read_bytes())
+        backup=Path(report['skill_backup'])
+        self.assertTrue(backup.is_file())
+        self.assertEqual(backup.read_text(encoding='utf-8'),'user edit')
     def test_dsh_js_extension_tag_is_supported(self):
         y=self.home/'.dsh/profiles/desktop/cordis.patch.yml';y.parent.mkdir(parents=True)
         original=("- id: session-query-sqlite\n  config:\n    path: !!js dshHomePath('session-index.sqlite')\n    openAt: first-search\n").encode('utf-8')
