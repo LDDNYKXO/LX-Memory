@@ -310,10 +310,12 @@ class Broker:
             elif operation == 'enable-saving' and not args:
                 # Installation UI obtains explicit consent; not an MCP tool.
                 data = await self.session.verify_create_contract()
-            elif operation == 'prepare' and {'category','title','summary','content'} <= set(args) <= {'category','title','summary','content','assessment_confirmation'}:
+            elif operation == 'prepare' and {'category','title','summary','content'} <= set(args) <= {'category','title','summary','content','assessment_confirmation','target_path'}:
                 data = await self.writeback.prepare(**args)
             elif operation == 'validate' and {'category','title','summary','content'} <= set(args) <= {'category','title','summary','content','path','project','cwd','remote'}:
                 data = await validate_proposal(self.session, **args)
+            elif operation == 'archive' and 'target_path' in args and set(args) <= {'target_path', 'superseded_by'}:
+                data = await self.writeback.prepare_archive(args['target_path'], args.get('superseded_by'))
             elif operation in ('commit','receipt') and set(args) == {'proposal_id'}:
                 data = await getattr(self.writeback, operation)(args['proposal_id'])
             elif operation == 'login' and set(args) <= {'remember'}:

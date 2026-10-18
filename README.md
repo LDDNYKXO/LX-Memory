@@ -21,9 +21,9 @@
 
 ## 日常使用
 
-可以说“查询灵犀记忆，继续上次项目”，或“请记住：……”。先检查连接，再读取相关记忆。只有用户明确要求保存时才生成预览、按授权提交、读回验证；普通聊天不自动保存。首版只新增 wiki 条目，不覆盖既有页面或核心记忆。
+可以说“查询灵犀记忆，继续上次项目”，或“请记住：……”。先检查连接，再读取相关记忆。只有用户明确要求保存时才生成预览、按授权提交、读回验证；普通聊天不自动保存。写入默认新增 wiki 条目；编辑既有页面走 `prepare(target_path=...)` 的整页替换预览，删除只允许已被明确替代或自身声明为测试/历史记录的页面，`core/` 与 `wiki/profile/` 始终受保护。
 
-八个 MCP 工具为 `status`、`search`、`read`、`prepare`、`commit`、`receipt`、`context`、`validate`。`context` 分层返回必需背景，并在可用时附带 profile/lessons 个人层；`validate` 在项目交接提交前模拟替代链，只有验证通过才应 commit。支持 Skill 的客户端可以另外安装配套 Skill；MCP 本身不依赖客户端具备 Skill 功能。灵犀桌面助手不必一直开着。
+九个 MCP 工具为 `status`、`search`、`read`、`prepare`、`commit`、`receipt`、`context`、`validate`、`archive`。`context` 分层返回必需背景，并在可用时附带 profile/lessons 个人层；`validate` 在项目交接提交前模拟替代链，只有验证通过才应 commit；`prepare` 传 `target_path` 表示整页替换；`archive` 只对已有证据证明可删的页面生成删除预览，删除不可恢复。支持 Skill 的客户端可以另外安装配套 Skill；MCP 本身不依赖客户端具备 Skill 功能。灵犀桌面助手不必一直开着。
 
 同一 Windows 用户的多个 Agent 复用一份本产品登录。换电脑首次登录一次；登录失效时按正常流程重新登录。首次开启保存功能仍需本人主动选择安装向导中的验证步骤，本入口不自动写入测试记忆。
 

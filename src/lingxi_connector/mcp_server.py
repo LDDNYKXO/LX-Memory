@@ -47,12 +47,22 @@ def create_server(root):
         return await invoke('validate', args)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True))
-    async def lingxi_memory_prepare(category: str, title: str, summary: str, content: str, assessment_confirmation: str | None = None) -> dict:
-        """Prepare full exact preview and bounded project duplicate/change/conflict assessment; no cloud write. Show all gaps/conflicts. Only after human confirms those specific issues, re-prepare with assessment_review_key as assessment_confirmation. That acknowledges issues, never authorizes commit: show the new exact preview and obtain separate authorization. Never infer consent or claim full-library deduplication."""
+    async def lingxi_memory_prepare(category: str, title: str, summary: str, content: str, assessment_confirmation: str | None = None, target_path: str = '') -> dict:
+        """Prepare full exact preview and bounded project duplicate/change/conflict assessment; no cloud write. Show all gaps/conflicts. Only after human confirms those specific issues, re-prepare with assessment_review_key as assessment_confirmation. That acknowledges issues, never authorizes commit: show the new exact preview and obtain separate authorization. Never infer consent or claim full-library deduplication. Passing target_path makes the preview an exact whole-page replacement of that existing page and includes its previous body so the caller can confirm what will be overwritten."""
         args = {'category':category,'title':title,'summary':summary,'content':content}
         if assessment_confirmation is not None:
             args['assessment_confirmation'] = assessment_confirmation
+        if target_path:
+            args['target_path'] = target_path
         return await invoke('prepare', args)
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True))
+    async def lingxi_memory_archive(target_path: str, superseded_by: str = '') -> dict:
+        """Preview permanent deletion of one page (no write). Evidence rule: the page must already be superseded — either `superseded_by` names the page that lists it in `supersedes` (read back and verified), or the page itself declares record_kind=test/history, or a search finds the superseding record. Returns the page body and a 600-second proposal; the delete happens only after an explicit lingxi_memory_commit with that proposal id. core/ and wiki/profile/ are always refused."""
+        args = {'target_path': target_path}
+        if superseded_by:
+            args['superseded_by'] = superseded_by
+        return await invoke('archive', args)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True))
     async def lingxi_memory_commit(proposal_id: str) -> dict:

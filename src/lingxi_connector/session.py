@@ -168,10 +168,29 @@ class Session:
             raise ConnectorError('ACCOUNT_CHANGED')
         if not isinstance(payload, dict) or set(payload) != {'path', 'front_matter', 'content'}:
             raise ConnectorError('INVALID_INPUT')
-        read_url(payload['path'])
-        parts = payload['path'].split('/')
-        if len(parts) != 3 or parts[0] != 'wiki' or parts[1] not in ('entities','projects','concepts','lessons','profile') or not parts[2].startswith('lingxi-connector-'):
+        self._check_write_path(payload['path'])
+        return await self._write_page('post', PREFIX + 'pages', payload,
+                                      expected_account, expected_epoch)
+
+    async def replace_page(self, payload, expected_account=None, expected_epoch=None):
+        """Whole-page replacement via PUT; the caller must supply the complete new body."""
+        if not self.create_contract_verified:
+            raise ConnectorError('UPSTREAM_CREATE_UNPROVEN')
+        if not self.write_enabled_for(expected_account):
+            raise ConnectorError('ACCOUNT_CHANGED')
+        if not isinstance(payload, dict) or set(payload) != {'path', 'front_matter', 'content'}:
             raise ConnectorError('INVALID_INPUT')
+        self._check_write_path(payload['path'])
+        return await self._write_page('put', read_url(payload['path']), payload,
+                                      expected_account, expected_epoch)
+
+    async def delete_page(self, path, expected_account=None, expected_epoch=None):
+        """Permanently remove one page. Irreversible: callers must preview and be authorized."""
+        if not self.create_contract_verified:
+            raise ConnectorError('UPSTREAM_CREATE_UNPROVEN')
+        if not self.write_enabled_for(expected_account):
+            raise ConnectorError('ACCOUNT_CHANGED')
+        self._check_write_path(path)
         async with self.lock:
             if self.context is None:
                 raise ConnectorError('AUTH_REQUIRED')
@@ -187,7 +206,43 @@ class Session:
                     await identity.dispose()
                 if epoch != self.epoch:
                     raise ConnectorError('ACCOUNT_CHANGED')
-                response = await self.context.request.post(PREFIX + 'pages', data=payload, timeout=20000, max_redirects=0)
+                response = await self.context.request.delete(read_url(path), timeout=20000, max_redirects=0)
+                try:
+                    result = decode_response(response.status, response.url, await response.text())
+                finally:
+                    await response.dispose()
+                if epoch != self.epoch:
+                    raise ConnectorError('AUTH_REQUIRED')
+                return result
+            except ConnectorError:
+                raise
+            except Exception:
+                raise ConnectorError('WRITE_OUTCOME_UNKNOWN') from None
+
+    def _check_write_path(self, path):
+        read_url(path)
+        parts = path.split('/')
+        if len(parts) != 3 or parts[0] != 'wiki' or parts[1] not in ('entities','projects','concepts','lessons','profile') or not parts[2].startswith('lingxi-connector-'):
+            raise ConnectorError('INVALID_INPUT')
+
+    async def _write_page(self, method, url, payload, expected_account, expected_epoch):
+        async with self.lock:
+            if self.context is None:
+                raise ConnectorError('AUTH_REQUIRED')
+            epoch = self.epoch
+            if expected_epoch != epoch or not isinstance(expected_account, str):
+                raise ConnectorError('ACCOUNT_CHANGED')
+            try:
+                identity = await self.context.request.get(IDENTITY_URL, timeout=20000, max_redirects=0)
+                try:
+                    if identity.url != IDENTITY_URL or identity_result(identity.status, json.loads(await identity.text())) != expected_account or epoch != self.epoch:
+                        raise ConnectorError('ACCOUNT_CHANGED')
+                finally:
+                    await identity.dispose()
+                if epoch != self.epoch:
+                    raise ConnectorError('ACCOUNT_CHANGED')
+                caller = self.context.request.post if method == 'post' else self.context.request.put
+                response = await caller(url, data=payload, timeout=20000, max_redirects=0)
                 try:
                     result = decode_response(response.status, response.url, await response.text())
                 finally:

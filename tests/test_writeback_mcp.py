@@ -41,13 +41,19 @@ class ContextToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(tools['lingxi_memory_validate'].annotations.read_only_hint)
         self.assertFalse(tools['lingxi_memory_validate'].annotations.destructive_hint)
 
-    async def test_eight_tools_total_and_the_original_six_are_intact(self):
+    async def test_archive_tool_is_registered_and_destructive(self):
         tools = await self.tools()
-        self.assertEqual(len(tools), 8)
+        self.assertIn('lingxi_memory_archive', tools)
+        self.assertFalse(tools['lingxi_memory_archive'].annotations.read_only_hint)
+        self.assertTrue(tools['lingxi_memory_archive'].annotations.destructive_hint)
+
+    async def test_nine_tools_total_and_the_original_six_are_intact(self):
+        tools = await self.tools()
+        self.assertEqual(len(tools), 9)
         self.assertTrue({'lingxi_memory_status', 'lingxi_memory_search', 'lingxi_memory_read',
                          'lingxi_memory_prepare', 'lingxi_memory_commit',
                          'lingxi_memory_receipt', 'lingxi_memory_context',
-                         'lingxi_memory_validate'} <= set(tools))
+                         'lingxi_memory_validate', 'lingxi_memory_archive'} <= set(tools))
 
     async def test_context_tool_schema_matches_the_broker_whitelist(self):
         tools = await self.tools()
