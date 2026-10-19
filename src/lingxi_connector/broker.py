@@ -147,6 +147,12 @@ class Broker:
     async def export(self, query='', paths=None, limit=10, output=''):
         return await collection.export(self.session, query, paths, limit, output, self.directory)
 
+    async def backup(self, query='', paths=None, output_dir='', keep=5):
+        return await collection.backup(self.session, query, paths, output_dir, keep, self.directory)
+
+    async def backup_verify(self, snapshot):
+        return await collection.verify_backup(self.session, snapshot, self.directory)
+
     async def context(self, args):
         """Same-round merge: one retrieval per (epoch, request identity, normalized clues).
 
@@ -316,6 +322,10 @@ class Broker:
                 data = await self.browse(args.get('query', ''), args.get('limit', 10), args.get('tag', ''))
             elif operation == 'export' and set(args) <= {'query', 'paths', 'limit', 'output'}:
                 data = await self.export(args.get('query', ''), args.get('paths'), args.get('limit', 10), args.get('output', ''))
+            elif operation == 'backup' and set(args) <= {'query', 'paths', 'output_dir', 'keep'}:
+                data = await self.backup(args.get('query', ''), args.get('paths'), args.get('output_dir', ''), args.get('keep', 5))
+            elif operation == 'backup-verify' and set(args) == {'snapshot'}:
+                data = await self.backup_verify(args['snapshot'])
             elif operation == 'context' and set(args) <= {'request', 'project', 'cwd', 'remote', 'request_id', 'turn_id', 'view', 'snapshot_id', 'cursor'}:
                 data = await self.context(args)
             elif operation == 'write-status' and not args:

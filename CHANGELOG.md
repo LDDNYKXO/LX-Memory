@@ -8,8 +8,9 @@
 - 标签/元数据：`prepare` 新增可选 `tags`/`attrs`，以页面末尾单行注释保存（不改变正文语义）；`read` 返回解析后的标签与属性；替换时默认沿用旧值，显式传入才改变或清空。上限：标签 10 个（每个 ≤32 字符），属性 10 条（值 ≤200 字符）。
 - 浏览：新增 `lingxi_memory_browse(query, limit, tag)`，基于检索返回带 `record_kind`/`as_of`/`tags`/`attrs` 的紧凑行，支持标签精确过滤；最多读取 20 个候选，读不到或非云页面跳过。它是近似浏览，不是目录树。
 - 导出：新增 `lingxi_memory_export`，按路径或检索结果把完整页面写成本地 JSON 快照，返回文件路径、逐页 sha256 与跳过项；输出路径限制在用户目录、临时目录或连接器运行目录下。导出文件含记忆正文，需用户自行保管。
+- 备份与校验：新增 `lingxi_memory_backup`，默认抓取 `core/核心记忆` + 画像/项目交接/经验检索结果，写入运行目录 `backups/<UTC>/snapshot.json`，按 `keep` 保留最近 N 份并清理更旧的本地快照；新增 `lingxi_memory_backup_verify`，只读复核快照每页与云端内容 sha256，返回 ok / drifted / missing / unreadable。备份是本地副本，不是云端写入。
 - 已知残余：上游没有可验证的条件写（If-Match/版本号）契约，替换只能把最终完整读取放到 PUT 前，无法完全消除“最终读取后、PUT 前”的跨客户端竞态；不声称该窗口已关闭。
-- MCP 工具由 9 个增加到 11 个；`prepare` 新增 `sources`/`related`/`tags`/`attrs`；全量测试 527 项通过。
+- MCP 工具由 9 个增加到 13 个；`prepare` 新增 `sources`/`related`/`tags`/`attrs`；全量测试 532 项通过。
 
 ## 0.3.2
 

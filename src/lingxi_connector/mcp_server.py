@@ -87,6 +87,23 @@ def create_server(root):
         return await invoke('export', args)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True))
+    async def lingxi_memory_backup(query: str = '', paths: list[str] | None = None, output_dir: str = '', keep: int = 5) -> dict:
+        """Create a timestamped local snapshot (curated set by default: core/核心记忆 plus search hits for profile, project handoff and lessons). Cloud is read-only. Keeps the newest `keep` snapshots under the output directory and prunes older local backups. Returns snapshot path, per-page sha256 and pruned directories."""
+        args = {'keep': keep}
+        if query:
+            args['query'] = query
+        if paths is not None:
+            args['paths'] = paths
+        if output_dir:
+            args['output_dir'] = output_dir
+        return await invoke('backup', args)
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True))
+    async def lingxi_memory_backup_verify(snapshot: str) -> dict:
+        """Read-only verification of a local snapshot: re-read each page from the cloud and report ok / drifted / missing / unreadable by content sha256. Never writes cloud or local files."""
+        return await invoke('backup-verify', {'snapshot': snapshot})
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True))
     async def lingxi_memory_archive(target_path: str, superseded_by: str = '') -> dict:
         """Preview permanent deletion of one page (no write). Evidence rule: the page must already be superseded — either `superseded_by` names the page that lists it in `supersedes` (read back and verified), or the page itself declares record_kind=test/history, or a search finds the superseding record. Returns the page body and a 600-second proposal; the delete happens only after an explicit lingxi_memory_commit with that proposal id. core/ and wiki/profile/ are always refused."""
         args = {'target_path': target_path}

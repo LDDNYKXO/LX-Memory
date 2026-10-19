@@ -47,20 +47,23 @@ class ContextToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(tools['lingxi_memory_archive'].annotations.read_only_hint)
         self.assertTrue(tools['lingxi_memory_archive'].annotations.destructive_hint)
 
-    async def test_eleven_tools_total_and_the_original_six_are_intact(self):
+    async def test_thirteen_tools_total_and_the_original_six_are_intact(self):
         tools = await self.tools()
-        self.assertEqual(len(tools), 11)
+        self.assertEqual(len(tools), 13)
         self.assertTrue({'lingxi_memory_status', 'lingxi_memory_search', 'lingxi_memory_read',
                          'lingxi_memory_prepare', 'lingxi_memory_commit',
                          'lingxi_memory_receipt', 'lingxi_memory_context',
                          'lingxi_memory_validate', 'lingxi_memory_archive',
-                         'lingxi_memory_browse', 'lingxi_memory_export'} <= set(tools))
+                         'lingxi_memory_browse', 'lingxi_memory_export',
+                         'lingxi_memory_backup', 'lingxi_memory_backup_verify'} <= set(tools))
 
     async def test_browse_is_read_only_and_export_writes_locally(self):
         tools = await self.tools()
         self.assertTrue(tools['lingxi_memory_browse'].annotations.read_only_hint)
         self.assertFalse(tools['lingxi_memory_export'].annotations.read_only_hint)
         self.assertFalse(tools['lingxi_memory_export'].annotations.destructive_hint)
+        self.assertTrue(tools['lingxi_memory_backup_verify'].annotations.read_only_hint)
+        self.assertFalse(tools['lingxi_memory_backup'].annotations.read_only_hint)
 
     async def test_context_tool_schema_matches_the_broker_whitelist(self):
         tools = await self.tools()

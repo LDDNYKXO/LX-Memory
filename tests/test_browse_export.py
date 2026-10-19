@@ -127,5 +127,64 @@ class ExportTests(unittest.IsolatedAsyncioTestCase):
             await collection.export(self.session, directory=self.root)
 
 
+class BackupTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.session = FakeSession()
+        self.root = Path(self.tmp.name) / 'runtime'
+        self.root.mkdir()
+
+    async def asyncTearDown(self):
+        self.tmp.cleanup()
+
+    async def test_backup_writes_snapshot_and_prunes_old_directories(self):
+        for _ in range(3):
+            result = await collection.backup(self.session, paths=[LESSON],
+                                             output_dir=str(self.root / 'backups'), keep=2,
+                                             directory=self.root)
+        self.assertEqual(result['entries'], 1)
+        self.assertEqual(result['keep'], 2)
+        dirs = sorted(path for path in (self.root / 'backups').iterdir() if path.is_dir())
+        self.assertEqual(len(dirs), 2)
+        self.assertTrue((Path(result['snapshot'])).exists())
+        self.assertTrue(result['pruned'])
+
+    async def test_default_curated_backup_uses_search_and_skips_missing(self):
+        result = await collection.backup(self.session, directory=self.root)
+        self.assertEqual(result['entries'], 2)
+        self.assertEqual(result['skipped'], [{'path': 'core/核心记忆', 'error': 'PAGE_NOT_FOUND'}])
+
+    async def test_backup_rejects_foreign_output_and_bad_keep(self):
+        with self.assertRaises(ConnectorError):
+            await collection.backup(self.session, paths=[LESSON], output_dir='C:/Windows/backups',
+                                    directory=self.root)
+        for keep in (0, 51):
+            with self.assertRaises(ConnectorError):
+                await collection.backup(self.session, paths=[LESSON], keep=keep, directory=self.root)
+
+    async def test_verify_reports_ok_drift_and_missing(self):
+        created = await collection.backup(self.session, paths=[HANDOFF, LESSON], directory=self.root)
+        verified = await collection.verify_backup(self.session, created['snapshot'], self.root)
+        self.assertEqual((verified['checked'], verified['ok']), (2, 2))
+        self.assertEqual(verified['drifted'], [])
+
+        self.session.pages[LESSON]['content'] = with_meta('changed body', ['教训'], {'领域': '记忆'})
+        verified = await collection.verify_backup(self.session, created['snapshot'], self.root)
+        self.assertEqual([row['path'] for row in verified['drifted']], [LESSON])
+
+        del self.session.pages[HANDOFF]
+        verified = await collection.verify_backup(self.session, created['snapshot'], self.root)
+        self.assertEqual(verified['missing'], [HANDOFF])
+
+    async def test_verify_rejects_foreign_or_malformed_snapshot(self):
+        with self.assertRaises(ConnectorError):
+            await collection.verify_backup(self.session, 'C:/Windows/snapshot.json', self.root)
+        bad = self.root / 'backups' / 'bad.json'
+        bad.parent.mkdir(parents=True, exist_ok=True)
+        bad.write_text('{not json', encoding='utf-8')
+        with self.assertRaises(ConnectorError):
+            await collection.verify_backup(self.session, str(bad), self.root)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -63,11 +63,12 @@ description: Use when a user says 继续这个项目, asks for project goals/cur
 - **编辑既有页面**：`lingxi_memory_prepare(..., target_path='wiki/projects/...')` 生成整页替换预览（含旧正文、旧标题、旧 `sources`/`related`/`tags`/`attrs` 与新值），确认后 `commit`；默认保留原元数据，只有显式传入才改变；提交前正文或元数据任一变化都会拒绝覆盖（`TARGET_CHANGED` / `TARGET_METADATA_CHANGED`）。`core/` 与 `wiki/profile/` 不接受替换。
 - **删除/归档**：只能删除**结构校验通过、且已被另一条项目记录明确替代**、或自身是完整 `test`/`history` 记录的页面；普通页面返回 `TARGET_NOT_SUPERSEDED`。可用 `superseded_by` 指明替代页（连接器会完整读回并校验其 `supersedes`）。删除不可恢复：预览必须展示正文，取得用户明确授权后才 `commit`；提交前会重新读取目标与证据页，证据消失/被改/不可读（`EVIDENCE_MISSING` / `EVIDENCE_CHANGED` / `EVIDENCE_UNREADABLE`）则拒绝；`core/` 与 `wiki/profile/` 始终拒绝。测试页应带完整记录结构（含 `project`、空 `supersedes`、`record_kind=test`）。
 
-## 元数据、浏览与导出（可选能力）
+## 元数据、浏览、导出与备份（可选能力）
 
 - **标签/属性**：`prepare(..., tags=[...], attrs={...})` 把标签与属性写为页面末尾的单行注释（标签最多 10 个、每个 ≤32 字符；属性最多 10 条、值 ≤200 字符），不改变正文；`read` 会返回解析后的 `tags`/`attrs`；替换时默认沿用旧值，显式传 `tags=[]`/`attrs={}` 才清空。标签只做本地/正文级匹配，不代表上游检索索引。
 - **浏览**：`lingxi_memory_browse(query, limit, tag='')` 基于检索返回紧凑行（标题、摘要、`record_kind`、`as_of`、`tags`、`attrs`），`tag` 为精确成员过滤；最多读取 20 个候选，读不到或非云返回的行会跳过。它是“近似浏览”，不是目录树。
 - **导出**：`lingxi_memory_export(paths=[...])` 或 `lingxi_memory_export(query=..., limit=...)` 把完整页面写成本地 JSON 快照（路径必须在用户目录、临时目录或连接器运行目录下），返回文件路径、逐页 sha256 与跳过项。导出文件含记忆正文，需按用户隐私要求保管，不上传、不提交 Git。
+- **备份与校验**：`lingxi_memory_backup()` 默认抓取 `core/核心记忆` + 画像/项目交接/经验检索结果，写入运行目录 `backups/<UTC>/snapshot.json`，按 `keep` 保留最近 N 份并清理更旧的本地快照；`lingxi_memory_backup_verify(snapshot)` 只读复核快照中的每页与云端内容 sha256，返回 ok / drifted / missing / unreadable。备份文件是本地副本，不是云端写入。
 
 只有`state=saved_verified`才能说“已保存到灵犀”，必要时用`lingxi_memory_receipt`读回执。`unknown`只查回执，不新建提案重发；`blocked`、过期、账号变化或工具缺失如实说明，不能用本地候选或快照冒充云端保存。普通聊天和仅查背景时不调用prepare/commit。
 
